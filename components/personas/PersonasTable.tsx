@@ -249,9 +249,13 @@ export default function PersonasTable({
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           {p.lat != null && (
-                            <span title="Geolocalizado en el mapa" className="text-rose-600 dark:text-rose-400">
-                              <MapPin className="w-3.5 h-3.5" />
-                            </span>
+                            <Link
+                              href={`/mapa?persona=${p.id}`}
+                              className="p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+                              title="Ver en el mapa"
+                            >
+                              <MapPin className="w-4 h-4" />
+                            </Link>
                           )}
 
                           <Link

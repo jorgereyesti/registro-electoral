@@ -195,7 +195,7 @@ export default function PersonaForm({ initialData, isEditing = false }: PersonaF
         }
 
         setSuccessMsg('¡Datos del votante actualizados exitosamente!');
-        setTimeout(() => router.push(`/personas/${initialData.id}`), 1200);
+        setTimeout(() => router.push('/personas'), 1200);
       } else {
         // Creación de nuevo votante
         const { error } = await (supabase.from('personas') as any).insert({

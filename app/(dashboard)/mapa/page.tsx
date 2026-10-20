@@ -4,7 +4,12 @@ import { DynamicGeneralMap } from '@/components/map/DynamicMap';
 import { PersonaRecord } from '@/lib/types/personas';
 import { Map } from 'lucide-react';
 
-export default async function MapaGeneralPage() {
+export default async function MapaGeneralPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ persona?: string }>;
+}) {
+  const params = await searchParams;
   const supabase = await createClient();
 
   // Cargamos los registros con coordenadas para el mapa
@@ -15,6 +20,16 @@ export default async function MapaGeneralPage() {
 
   if (error) {
     console.error('Error cargando personas para el mapa:', error);
+  }
+
+  // Si viene un votante focalizado desde el padrón (?persona=uuid)
+  let focusPersona: PersonaRecord | null = null;
+  if (params.persona) {
+    const { data } = await (supabase.from('personas') as any)
+      .select('*')
+      .eq('id', params.persona)
+      .single();
+    if (data) focusPersona = data as PersonaRecord;
   }
 
   return (
@@ -34,7 +49,10 @@ export default async function MapaGeneralPage() {
 
       {/* Componente del Mapa Aislado */}
       <div className="flex-1 w-full min-h-0">
-        <DynamicGeneralMap personas={(personas as PersonaRecord[]) || []} />
+        <DynamicGeneralMap
+          personas={(personas as PersonaRecord[]) || []}
+          focusPersona={focusPersona}
+        />
       </div>
     </div>
   );

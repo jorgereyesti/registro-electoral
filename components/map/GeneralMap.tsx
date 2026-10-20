@@ -9,15 +9,17 @@ import { Filter, Users, Layers, Eye, RefreshCw, MapPin } from 'lucide-react';
 
 interface GeneralMapProps {
   personas: PersonaRecord[];
+  focusPersona?: PersonaRecord | null;
   onPersonaSelect?: (persona: PersonaRecord) => void;
 }
 
-export default function GeneralMap({ personas, onPersonaSelect }: GeneralMapProps) {
+export default function GeneralMap({ personas, focusPersona, onPersonaSelect }: GeneralMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const clusterGroupRef = useRef<L.MarkerClusterGroup | null>(null);
   const barriosLayerRef = useRef<L.GeoJSON | null>(null);
   const circuitosLayerRef = useRef<L.GeoJSON | null>(null);
+  const focusAppliedRef = useRef<boolean>(false);
 
   // States
   const [selectedBarrio, setSelectedBarrio] = useState<string>('todos');
@@ -26,6 +28,7 @@ export default function GeneralMap({ personas, onPersonaSelect }: GeneralMapProp
   const [showCircuitosLayer, setShowCircuitosLayer] = useState<boolean>(false);
   const [geoJsonData, setGeoJsonData] = useState<{ barrios: any; circuitos: any } | null>(null);
   const [activePersona, setActivePersona] = useState<PersonaRecord | null>(null);
+  const [mapReady, setMapReady] = useState<boolean>(false);
 
   // Filtered personas based on selects
   const filteredPersonas = useMemo(() => {
@@ -77,10 +80,12 @@ export default function GeneralMap({ personas, onPersonaSelect }: GeneralMapProp
     map.addLayer(clusterGroup);
     clusterGroupRef.current = clusterGroup;
     mapInstanceRef.current = map;
+    setMapReady(true);
 
     return () => {
       map.remove();
       mapInstanceRef.current = null;
+      setMapReady(false);
     };
   }, []);
 
@@ -153,6 +158,41 @@ export default function GeneralMap({ personas, onPersonaSelect }: GeneralMapProp
       circuitosLayerRef.current = cLayer;
     }
   }, [geoJsonData, showBarriosLayer, showCircuitosLayer, selectedBarrio, selectedCircuito]);
+
+  // Focus on a specific persona arriving from the Padrón (?persona=id)
+  useEffect(() => {
+    if (
+      !focusPersona ||
+      !mapReady ||
+      !geoJsonData ||
+      !mapInstanceRef.current ||
+      focusAppliedRef.current
+    ) {
+      return;
+    }
+
+    focusAppliedRef.current = true;
+
+    // Set filters to highlight the voter's barrio and circuito polygons
+    setSelectedBarrio(focusPersona.barrio);
+    setSelectedCircuito(focusPersona.circuito);
+    setShowBarriosLayer(true);
+    setShowCircuitosLayer(true);
+
+    // Show the floating detail card
+    setActivePersona(focusPersona);
+
+    // Center the map on the voter's location
+    if (focusPersona.lat != null && focusPersona.lng != null) {
+      setTimeout(() => {
+        mapInstanceRef.current?.setView(
+          [focusPersona.lat!, focusPersona.lng!],
+          16,
+          { animate: true }
+        );
+      }, 300);
+    }
+  }, [focusPersona, mapReady, geoJsonData]);
 
   // Sync Markers into Cluster Group using Rose-600 Map Accent (#e11d48)
   useEffect(() => {
