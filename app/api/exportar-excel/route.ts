@@ -17,9 +17,10 @@ export async function GET(request: NextRequest) {
   const q = searchParams.get('q') || '';
   const barrio = searchParams.get('barrio') || '';
   const circuito = searchParams.get('circuito') || '';
+  const referente = searchParams.get('referente') || '';
 
   let query = (supabase.from('personas') as any)
-    .select('id, dni, apellido_nombre, fecha_nacimiento, telefono, direccion, barrio, circuito, lat, lng, created_at')
+    .select('id, dni, apellido_nombre, fecha_nacimiento, telefono, direccion, barrio, circuito, lat, lng, created_at, created_by')
     .order('apellido_nombre', { ascending: true });
 
   if (q) {
@@ -31,12 +32,24 @@ export async function GET(request: NextRequest) {
   if (circuito && circuito !== 'todos') {
     query = query.eq('circuito', circuito);
   }
+  if (referente && referente !== 'todos') {
+    query = query.eq('created_by', referente);
+  }
 
   const { data: personas, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // Obtenemos los perfiles para asociar el nombre del referente a cada fila
+  const { data: perfiles } = await (supabase.from('perfiles') as any)
+    .select('id, email, nombre_completo, rol');
+
+  const perfilesMap: Record<string, any> = {};
+  (perfiles || []).forEach((p: any) => {
+    if (p.id) perfilesMap[p.id] = p;
+  });
 
   // Crear libro de trabajo con ExcelJS
   const workbook = new ExcelJS.Workbook();
@@ -47,7 +60,7 @@ export async function GET(request: NextRequest) {
     properties: { tabColor: { argb: 'FF2563EB' } },
   });
 
-  // Definición de columnas
+  // Definición de columnas con Referente
   worksheet.columns = [
     { header: 'DNI', key: 'dni', width: 14 },
     { header: 'Apellido y Nombre', key: 'apellido_nombre', width: 32 },
@@ -56,6 +69,7 @@ export async function GET(request: NextRequest) {
     { header: 'Dirección', key: 'direccion', width: 28 },
     { header: 'Barrio', key: 'barrio', width: 24 },
     { header: 'Circuito Electoral', key: 'circuito', width: 18 },
+    { header: 'Referente / Cargado por', key: 'referente', width: 28 },
     { header: 'Latitud', key: 'lat', width: 14 },
     { header: 'Longitud', key: 'lng', width: 14 },
     { header: 'Fecha de Alta', key: 'created_at', width: 20 },
@@ -74,6 +88,9 @@ export async function GET(request: NextRequest) {
 
   // Llenar datos
   personas?.forEach((p: any) => {
+    const perfil = perfilesMap[p.created_by];
+    const referenteNombre = perfil?.nombre_completo || perfil?.email || 'Sin referente asignado';
+
     worksheet.addRow({
       dni: p.dni,
       apellido_nombre: p.apellido_nombre,
@@ -82,6 +99,7 @@ export async function GET(request: NextRequest) {
       direccion: p.direccion || '-',
       barrio: p.barrio,
       circuito: p.circuito,
+      referente: referenteNombre,
       lat: p.lat ?? '-',
       lng: p.lng ?? '-',
       created_at: new Date(p.created_at).toLocaleDateString('es-AR'),

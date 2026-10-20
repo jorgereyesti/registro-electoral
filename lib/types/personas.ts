@@ -57,6 +57,8 @@ export interface PersonaRecord {
     email: string | null;
     nombre_completo: string | null;
   };
+  referente_nombre?: string;
+  referente_id?: string;
 }
 
 export interface PerfilUsuario {

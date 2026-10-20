@@ -10,6 +10,7 @@ import {
   Search, 
   Filter, 
   FileSpreadsheet, 
+  FileText,
   UserPlus, 
   Eye, 
   Edit3, 
@@ -18,14 +19,23 @@ import {
   Loader2, 
   ChevronLeft, 
   ChevronRight,
-  AlertCircle
+  AlertCircle,
+  ShieldCheck
 } from 'lucide-react';
+
+export interface ReferenteOption {
+  id: string;
+  nombre: string;
+  email: string | null;
+  rol?: string;
+}
 
 interface PersonasTableProps {
   initialPersonas: PersonaRecord[];
   totalCount: number;
   currentUserId: string;
   isAdmin: boolean;
+  referentes?: ReferenteOption[];
 }
 
 export default function PersonasTable({
@@ -33,6 +43,7 @@ export default function PersonasTable({
   totalCount,
   currentUserId,
   isAdmin,
+  referentes = [],
 }: PersonasTableProps) {
   const router = useRouter();
   const supabase = createClient();
@@ -41,6 +52,7 @@ export default function PersonasTable({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBarrio, setSelectedBarrio] = useState('todos');
   const [selectedCircuito, setSelectedCircuito] = useState('todos');
+  const [selectedReferente, setSelectedReferente] = useState('todos');
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -52,7 +64,11 @@ export default function PersonasTable({
     const matchQuery = !q || p.dni.includes(q) || p.apellido_nombre.toLowerCase().includes(q);
     const matchBarrio = selectedBarrio === 'todos' || p.barrio.toLowerCase() === selectedBarrio.toLowerCase();
     const matchCircuito = selectedCircuito === 'todos' || p.circuito.toLowerCase() === selectedCircuito.toLowerCase();
-    return matchQuery && matchBarrio && matchCircuito;
+    const matchReferente =
+      selectedReferente === 'todos' ||
+      p.referente_id === selectedReferente ||
+      p.created_by === selectedReferente;
+    return matchQuery && matchBarrio && matchCircuito && matchReferente;
   });
 
   // Paginación
@@ -95,7 +111,118 @@ export default function PersonasTable({
     if (searchTerm) params.set('q', searchTerm);
     if (selectedBarrio !== 'todos') params.set('barrio', selectedBarrio);
     if (selectedCircuito !== 'todos') params.set('circuito', selectedCircuito);
+    if (selectedReferente !== 'todos') params.set('referente', selectedReferente);
     window.open(`/api/exportar-excel?${params.toString()}`, '_blank');
+  };
+
+  const handleExportPDF = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Por favor habilita las ventanas emergentes en tu navegador para generar el PDF.');
+      return;
+    }
+
+    const fechaHoy = new Date().toLocaleString('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const refObj = (referentes || []).find((r) => r.id === selectedReferente);
+    const refNombreFiltro =
+      selectedReferente === 'todos'
+        ? 'Todos los referentes'
+        : refObj
+        ? `${refObj.nombre} (${refObj.email})`
+        : selectedReferente;
+
+    const rowsHtml = filteredPersonas
+      .map(
+        (p, idx) => `
+      <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f9fafb'}; border-bottom: 1px solid #e5e7eb;">
+        <td style="padding: 6px 8px; font-weight: bold; font-family: monospace; font-size: 11px;">${p.dni}</td>
+        <td style="padding: 6px 8px; font-size: 11px; font-weight: 600;">${p.apellido_nombre}</td>
+        <td style="padding: 6px 8px; font-size: 11px;">${p.barrio}</td>
+        <td style="padding: 6px 8px; font-size: 11px; text-align: center; font-weight: bold;">${p.circuito}</td>
+        <td style="padding: 6px 8px; font-size: 10px; color: #4338ca; font-weight: 600;">${p.referente_nombre || 'Sin referente'}</td>
+        <td style="padding: 6px 8px; font-size: 10px; color: #4b5563;">${p.direccion || '-'}</td>
+        <td style="padding: 6px 8px; font-size: 10px; font-family: monospace;">${p.telefono || '-'}</td>
+      </tr>
+    `
+      )
+      .join('');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Padrón Electoral - San Miguel de Tucumán</title>
+          <meta charset="utf-8" />
+          <style>
+            @page { size: A4 landscape; margin: 10mm; }
+            body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #18181b; margin: 0; padding: 8px; }
+            .header { border-bottom: 2px solid #4338ca; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start; }
+            .title { font-size: 18px; font-weight: 900; text-transform: uppercase; color: #1e1b4b; letter-spacing: -0.02em; }
+            .subtitle { font-size: 11px; color: #6b7280; margin-top: 2px; }
+            .badge-box { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: 11px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+            th { background: #1e1b4b; color: #ffffff; text-align: left; padding: 7px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+            .footer { margin-top: 16px; text-align: right; font-size: 10px; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 6px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              <div class="title">Sistema de Registro Electoral • San Miguel de Tucumán</div>
+              <div class="subtitle">Nómina Oficial del Padrón de Votantes</div>
+            </div>
+            <div style="text-align: right; font-size: 11px; color: #4b5563;">
+              <div><strong>Fecha de emisión:</strong> ${fechaHoy}</div>
+              <div><strong>Total Votantes:</strong> ${filteredPersonas.length} registros</div>
+            </div>
+          </div>
+
+          <div class="badge-box">
+            <div><strong>Barrio:</strong> ${selectedBarrio === 'todos' ? 'Todos los barrios' : selectedBarrio}</div>
+            <div><strong>Circuito:</strong> ${selectedCircuito === 'todos' ? 'Todos los circuitos' : `Circuito ${selectedCircuito}`}</div>
+            <div><strong>Referente:</strong> ${refNombreFiltro}</div>
+            <div><strong>Búsqueda:</strong> ${searchTerm ? `"${searchTerm}"` : 'Sin filtro de texto'}</div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 11%;">DNI</th>
+                <th style="width: 23%;">Apellido y Nombre</th>
+                <th style="width: 16%;">Barrio</th>
+                <th style="width: 8%; text-align: center;">Circuito</th>
+                <th style="width: 16%;">Referente</th>
+                <th style="width: 16%;">Dirección</th>
+                <th style="width: 10%;">Teléfono</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+
+          <div class="footer">
+            Documento emitido para fines de fiscalización y gestión electoral • San Miguel de Tucumán
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
   };
 
   return (
@@ -164,6 +291,25 @@ export default function PersonasTable({
             ))}
           </select>
 
+          {/* Filtro por Referente */}
+          {referentes && referentes.length > 0 && (
+            <select
+              value={selectedReferente}
+              onChange={(e) => {
+                setSelectedReferente(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 rounded-xl px-2.5 py-2 focus:ring-2 focus:ring-indigo-500 max-w-[180px]"
+            >
+              <option value="todos">Todos los Referentes</option>
+              {referentes.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.nombre} {r.rol === 'admin' ? '(Admin)' : ''}
+                </option>
+              ))}
+            </select>
+          )}
+
           {/* Exportar Excel - Emerald-500 Secundario */}
           <button
             onClick={handleExportExcel}
@@ -172,6 +318,16 @@ export default function PersonasTable({
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
             <span>Excel</span>
+          </button>
+
+          {/* Exportar PDF - Rose-600 */}
+          <button
+            onClick={handleExportPDF}
+            className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs shadow-rose-600/20 cursor-pointer"
+            title="Exportar a PDF / Imprimir Padrón"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>PDF</span>
           </button>
 
           {/* Nuevo Registro - Indigo-600 Primario */}
@@ -195,6 +351,7 @@ export default function PersonasTable({
                 <th className="px-4 py-3">Apellido y Nombre</th>
                 <th className="px-4 py-3">Edad</th>
                 <th className="px-4 py-3">Barrio / Circuito</th>
+                <th className="px-4 py-3">Referente</th>
                 <th className="px-4 py-3">Dirección</th>
                 <th className="px-4 py-3">Teléfono</th>
                 <th className="px-4 py-3 text-right">Acciones</th>
@@ -203,7 +360,7 @@ export default function PersonasTable({
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {paginatedPersonas.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-zinc-400">
+                  <td colSpan={8} className="px-4 py-12 text-center text-zinc-400">
                     <div className="flex flex-col items-center justify-center space-y-2">
                       <Search className="w-8 h-8 text-zinc-300 dark:text-zinc-600" />
                       <p className="font-medium text-sm text-zinc-600 dark:text-zinc-400">No se encontraron personas con los filtros seleccionados.</p>
@@ -239,6 +396,14 @@ export default function PersonasTable({
                       <td className="px-4 py-3">
                         <span className="font-semibold text-zinc-800 dark:text-zinc-200">{p.barrio}</span>
                         <span className="text-[11px] text-zinc-400 block">Circuito {p.circuito}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                          <ShieldCheck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                          <span className="truncate max-w-[140px]" title={p.referente_nombre || 'Sin referente'}>
+                            {p.referente_nombre || 'Sin referente'}
+                          </span>
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">
                         {p.direccion || <span className="text-zinc-400 italic">Sin dirección</span>}

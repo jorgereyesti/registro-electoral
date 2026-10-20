@@ -27,6 +27,33 @@ export default async function PersonasPage() {
     console.error('Error cargando personas:', error);
   }
 
+  // Obtener catálogo de perfiles (referentes y administradores)
+  const { data: perfiles } = await (supabase.from('perfiles') as any)
+    .select('id, email, nombre_completo, rol');
+
+  const perfilesMap: Record<string, any> = {};
+  (perfiles || []).forEach((p: any) => {
+    if (p.id) perfilesMap[p.id] = p;
+  });
+
+  // Cruzamos las personas con el perfil del referente creador
+  const personasConReferente = (personas || []).map((p: any) => {
+    const perf = perfilesMap[p.created_by];
+    return {
+      ...p,
+      referente_nombre: perf?.nombre_completo || perf?.email || 'Sin referente asignado',
+      referente_id: p.created_by || 'sin_asignar',
+    };
+  });
+
+  // Catálogo de referentes para el filtro
+  const referentes = (perfiles || []).map((p: any) => ({
+    id: p.id,
+    nombre: p.nombre_completo || p.email || 'Usuario',
+    email: p.email,
+    rol: p.rol,
+  }));
+
   return (
     <div className="space-y-6">
       {/* Encabezado */}
@@ -41,10 +68,11 @@ export default async function PersonasPage() {
 
       {/* Tabla con Filtros y Acciones */}
       <PersonasTable
-        initialPersonas={(personas as PersonaRecord[]) || []}
+        initialPersonas={(personasConReferente as PersonaRecord[]) || []}
         totalCount={count || 0}
         currentUserId={user?.id || ''}
         isAdmin={isAdmin}
+        referentes={referentes}
       />
     </div>
   );
