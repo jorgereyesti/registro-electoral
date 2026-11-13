@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { PersonaRecord } from '@/lib/types/personas';
@@ -33,47 +33,91 @@ export interface ReferenteOption {
 interface PersonasTableProps {
   initialPersonas: PersonaRecord[];
   totalCount: number;
+  filteredCount?: number;
   currentUserId: string;
   isAdmin: boolean;
   referentes?: ReferenteOption[];
+  currentPage?: number;
+  pageSize?: number;
+  initialQ?: string;
+  initialBarrio?: string;
+  initialCircuito?: string;
+  initialReferente?: string;
 }
 
 export default function PersonasTable({
   initialPersonas,
   totalCount,
+  filteredCount = totalCount,
   currentUserId,
   isAdmin,
   referentes = [],
+  currentPage = 1,
+  pageSize = 10,
+  initialQ = '',
+  initialBarrio = 'todos',
+  initialCircuito = 'todos',
+  initialReferente = 'todos',
 }: PersonasTableProps) {
   const router = useRouter();
   const supabase = createClient();
 
-  const [personas, setPersonas] = useState<PersonaRecord[]>(initialPersonas);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedBarrio, setSelectedBarrio] = useState('todos');
-  const [selectedCircuito, setSelectedCircuito] = useState('todos');
-  const [selectedReferente, setSelectedReferente] = useState('todos');
-  const [pageSize, setPageSize] = useState(10);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const [searchTerm, setSearchTerm] = useState(initialQ);
+  const [prevQ, setPrevQ] = useState(initialQ);
+  if (initialQ !== prevQ) {
+    setPrevQ(initialQ);
+    setSearchTerm(initialQ);
+  }
+
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Filtrado reactivo en el cliente
-  const filteredPersonas = personas.filter((p) => {
-    const q = searchTerm.toLowerCase().trim();
-    const matchQuery = !q || p.dni.includes(q) || p.apellido_nombre.toLowerCase().includes(q);
-    const matchBarrio = selectedBarrio === 'todos' || p.barrio.toLowerCase() === selectedBarrio.toLowerCase();
-    const matchCircuito = selectedCircuito === 'todos' || p.circuito.toLowerCase() === selectedCircuito.toLowerCase();
-    const matchReferente =
-      selectedReferente === 'todos' ||
-      p.referente_id === selectedReferente ||
-      p.created_by === selectedReferente;
-    return matchQuery && matchBarrio && matchCircuito && matchReferente;
-  });
+  const personas = initialPersonas.filter((p) => !deletedIds.has(p.id));
+  const selectedBarrio = initialBarrio;
+  const selectedCircuito = initialCircuito;
+  const selectedReferente = initialReferente;
 
-  // Paginación
-  const totalPages = Math.max(1, Math.ceil(filteredPersonas.length / pageSize));
-  const paginatedPersonas = filteredPersonas.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  // Navegar con filtros hacia el servidor
+  const navigateWithFilters = (updates: {
+    page?: number;
+    pageSize?: number;
+    q?: string;
+    barrio?: string;
+    circuito?: string;
+    referente?: string;
+  }) => {
+    const p = new URLSearchParams();
+    const newPage = updates.page !== undefined ? updates.page : 1;
+    const newPageSize = updates.pageSize !== undefined ? updates.pageSize : pageSize;
+    const newQ = updates.q !== undefined ? updates.q : searchTerm;
+    const newBarrio = updates.barrio !== undefined ? updates.barrio : selectedBarrio;
+    const newCircuito = updates.circuito !== undefined ? updates.circuito : selectedCircuito;
+    const newReferente = updates.referente !== undefined ? updates.referente : selectedReferente;
+
+    if (newPage > 1) p.set('page', String(newPage));
+    if (newPageSize !== 10) p.set('pageSize', String(newPageSize));
+    if (newQ.trim()) p.set('q', newQ.trim());
+    if (newBarrio && newBarrio !== 'todos') p.set('barrio', newBarrio);
+    if (newCircuito && newCircuito !== 'todos') p.set('circuito', newCircuito);
+    if (newReferente && newReferente !== 'todos') p.set('referente', newReferente);
+
+    const queryStr = p.toString();
+    router.push(queryStr ? `/personas?${queryStr}` : '/personas');
+  };
+
+  // Debounce para el input de búsqueda
+  useEffect(() => {
+    if (searchTerm === initialQ) return;
+    const timer = setTimeout(() => {
+      navigateWithFilters({ q: searchTerm, page: 1 });
+    }, 450);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm]);
+
+  // Paginación desde Servidor
+  const totalPages = Math.max(1, Math.ceil(filteredCount / pageSize));
 
   const handleDelete = async (id: string, personaName: string) => {
     if (!window.confirm(`¿Estás seguro de que deseas eliminar a ${personaName}?`)) {
@@ -96,7 +140,7 @@ export default function PersonasTable({
         );
       }
 
-      setPersonas((prev) => prev.filter((p) => p.id !== id));
+      setDeletedIds((prev) => new Set(prev).add(id));
       router.refresh();
     } catch (err: any) {
       console.error('Error al eliminar:', err);
@@ -138,9 +182,9 @@ export default function PersonasTable({
         ? `${refObj.nombre} (${refObj.email})`
         : selectedReferente;
 
-    const rowsHtml = filteredPersonas
+    const rowsHtml = personas
       .map(
-        (p, idx) => `
+        (p: PersonaRecord, idx: number) => `
       <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f9fafb'}; border-bottom: 1px solid #e5e7eb;">
         <td style="padding: 6px 8px; font-weight: bold; font-family: monospace; font-size: 11px;">${p.dni}</td>
         <td style="padding: 6px 8px; font-size: 11px; font-weight: 600;">${p.apellido_nombre}</td>
@@ -180,7 +224,7 @@ export default function PersonasTable({
             </div>
             <div style="text-align: right; font-size: 11px; color: #4b5563;">
               <div><strong>Fecha de emisión:</strong> ${fechaHoy}</div>
-              <div><strong>Total Votantes:</strong> ${filteredPersonas.length} registros</div>
+              <div><strong>Total Votantes:</strong> ${personas.length} registros (Página ${currentPage} de ${totalPages})</div>
             </div>
           </div>
 
@@ -249,9 +293,11 @@ export default function PersonasTable({
             type="text"
             placeholder="Buscar por DNI o Apellido y Nombre..."
             value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setCurrentPage(1);
+            onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                navigateWithFilters({ q: searchTerm, page: 1 });
+              }
             }}
             className="w-full pl-9 pr-3 py-2 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 rounded-xl focus:ring-2 focus:ring-indigo-500"
           />
@@ -261,10 +307,7 @@ export default function PersonasTable({
         <div className="flex flex-wrap items-center gap-2">
           <select
             value={selectedBarrio}
-            onChange={(e) => {
-              setSelectedBarrio(e.target.value);
-              setCurrentPage(1);
-            }}
+            onChange={(e) => navigateWithFilters({ barrio: e.target.value, page: 1 })}
             className="text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 rounded-xl px-2.5 py-2 focus:ring-2 focus:ring-indigo-500 max-w-[170px]"
           >
             <option value="todos">Todos los Barrios</option>
@@ -277,10 +320,7 @@ export default function PersonasTable({
 
           <select
             value={selectedCircuito}
-            onChange={(e) => {
-              setSelectedCircuito(e.target.value);
-              setCurrentPage(1);
-            }}
+            onChange={(e) => navigateWithFilters({ circuito: e.target.value, page: 1 })}
             className="text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 rounded-xl px-2.5 py-2 focus:ring-2 focus:ring-indigo-500"
           >
             <option value="todos">Todos los Circuitos</option>
@@ -295,10 +335,7 @@ export default function PersonasTable({
           {referentes && referentes.length > 0 && (
             <select
               value={selectedReferente}
-              onChange={(e) => {
-                setSelectedReferente(e.target.value);
-                setCurrentPage(1);
-              }}
+              onChange={(e) => navigateWithFilters({ referente: e.target.value, page: 1 })}
               className="text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 rounded-xl px-2.5 py-2 focus:ring-2 focus:ring-indigo-500 max-w-[180px]"
             >
               <option value="todos">Todos los Referentes</option>
@@ -358,7 +395,7 @@ export default function PersonasTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              {paginatedPersonas.length === 0 ? (
+              {personas.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-12 text-center text-zinc-400">
                     <div className="flex flex-col items-center justify-center space-y-2">
@@ -374,9 +411,14 @@ export default function PersonasTable({
                   </td>
                 </tr>
               ) : (
-                paginatedPersonas.map((p) => {
-                  const birthYear = new Date(p.fecha_nacimiento).getFullYear();
-                  const age = new Date().getFullYear() - birthYear;
+                personas.map((p) => {
+                  const birthDate = new Date(p.fecha_nacimiento + 'T00:00:00');
+                  const today = new Date();
+                  let age = today.getFullYear() - birthDate.getFullYear();
+                  const mDiff = today.getMonth() - birthDate.getMonth();
+                  if (mDiff < 0 || (mDiff === 0 && today.getDate() < birthDate.getDate())) {
+                    age--;
+                  }
                   const canDelete = isAdmin || p.created_by === currentUserId;
 
                   return (
@@ -391,7 +433,7 @@ export default function PersonasTable({
                         {p.apellido_nombre}
                       </td>
                       <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
-                        {age} años
+                        {isNaN(age) ? '-' : `${age} años`}
                       </td>
                       <td className="px-4 py-3">
                         <span className="font-semibold text-zinc-800 dark:text-zinc-200">{p.barrio}</span>
@@ -463,23 +505,20 @@ export default function PersonasTable({
           </table>
         </div>
 
-        {/* Paginador */}
+        {/* Paginador desde Servidor */}
         <div className="px-4 py-3 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 flex flex-wrap items-center justify-between text-xs text-zinc-500 dark:text-zinc-400 gap-2">
           <div>
-            Mostrando <strong>{filteredPersonas.length > 0 ? (currentPage - 1) * pageSize + 1 : 0}</strong> a{' '}
-            <strong>{Math.min(currentPage * pageSize, filteredPersonas.length)}</strong> de{' '}
-            <strong>{filteredPersonas.length}</strong> votantes filtrados (Total general: {totalCount})
+            Mostrando <strong>{filteredCount > 0 ? (currentPage - 1) * pageSize + 1 : 0}</strong> a{' '}
+            <strong>{Math.min(currentPage * pageSize, filteredCount)}</strong> de{' '}
+            <strong>{filteredCount}</strong> votantes filtrados (Total en padrón: {totalCount})
           </div>
 
           <div className="flex items-center gap-2">
             <span>Filas por página:</span>
             <select
               value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-zinc-700 dark:text-zinc-300"
+              onChange={(e) => navigateWithFilters({ pageSize: Number(e.target.value), page: 1 })}
+              className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-zinc-700 dark:text-zinc-300 cursor-pointer"
             >
               <option value={10}>10</option>
               <option value={25}>25</option>
@@ -488,9 +527,10 @@ export default function PersonasTable({
 
             <div className="flex items-center gap-1 ml-2">
               <button
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
+                onClick={() => navigateWithFilters({ page: Math.max(1, currentPage - 1) })}
                 className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-white dark:hover:bg-zinc-800 disabled:opacity-30 cursor-pointer"
+                title="Página anterior"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -499,8 +539,9 @@ export default function PersonasTable({
               </span>
               <button
                 disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() => navigateWithFilters({ page: Math.min(totalPages, currentPage + 1) })}
                 className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-white dark:hover:bg-zinc-800 disabled:opacity-30 cursor-pointer"
+                title="Página siguiente"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>

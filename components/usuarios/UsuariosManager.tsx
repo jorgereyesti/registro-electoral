@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { PerfilUsuario } from '@/lib/types/personas';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, UserPlus, Mail, User, Shield, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, UserPlus, Mail, User, Shield, Loader2, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react';
 
 interface UsuariosManagerProps {
   initialUsuarios: (PerfilUsuario & { created_at: string })[];
@@ -26,6 +26,8 @@ export default function UsuariosManager({ initialUsuarios, currentUserId }: Usua
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const handleCrearUsuario = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -33,21 +35,26 @@ export default function UsuariosManager({ initialUsuarios, currentUserId }: Usua
     setSuccessMsg(null);
 
     try {
-      // Registrar usuario mediante Supabase Auth
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
-        password: password,
-        options: {
-          data: {
-            nombre_completo: nombreCompleto.trim(),
-            rol: rol,
-          },
+      // Registrar usuario mediante endpoint seguro de backend (no desloguea la sesión del Admin)
+      const res = await fetch('/api/usuarios', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          nombreCompleto: nombreCompleto.trim(),
+          rol,
+        }),
       });
 
-      if (error) throw error;
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al procesar el alta del usuario.');
+      }
 
-      setSuccessMsg('Usuario creado exitosamente. Se ha sincronizado su rol en el sistema.');
+      setSuccessMsg(data.message || 'Usuario creado exitosamente.');
       setTimeout(() => {
         setShowModal(false);
         setEmail('');
@@ -62,6 +69,30 @@ export default function UsuariosManager({ initialUsuarios, currentUserId }: Usua
       setErrorMsg(err.message || 'Error al dar de alta el usuario.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleEliminarUsuario = async (userId: string, userEmail: string) => {
+    if (!window.confirm(`¿Estás seguro de revocar y eliminar el acceso para ${userEmail}?`)) {
+      return;
+    }
+
+    setDeletingId(userId);
+    try {
+      const res = await fetch(`/api/usuarios?id=${userId}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'No se pudo eliminar el usuario.');
+      }
+
+      setUsuarios((prev) => prev.filter((u) => u.id !== userId));
+      router.refresh();
+    } catch (err: any) {
+      alert('Error eliminando usuario: ' + err.message);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -114,7 +145,7 @@ export default function UsuariosManager({ initialUsuarios, currentUserId }: Usua
                 <th className="px-4 py-3">Correo Electrónico</th>
                 <th className="px-4 py-3">Rol del Sistema</th>
                 <th className="px-4 py-3">Fecha de Creación</th>
-                <th className="px-4 py-3 text-right">Modificar Rol</th>
+                <th className="px-4 py-3 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -156,16 +187,31 @@ export default function UsuariosManager({ initialUsuarios, currentUserId }: Usua
 
                     <td className="px-4 py-3 text-right">
                       {isCurrent ? (
-                        <span className="text-[11px] text-zinc-400 italic">No editable</span>
+                        <span className="text-[11px] text-zinc-400 italic">Tu cuenta</span>
                       ) : (
-                        <select
-                          value={u.rol}
-                          onChange={(e) => handleCambiarRol(u.id, e.target.value as 'admin' | 'referente')}
-                          className="text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-zinc-700 dark:text-zinc-300 focus:ring-2 focus:ring-indigo-500"
-                        >
-                          <option value="referente">Referente</option>
-                          <option value="admin">Administrador</option>
-                        </select>
+                        <div className="flex items-center justify-end gap-2">
+                          <select
+                            value={u.rol}
+                            onChange={(e) => handleCambiarRol(u.id, e.target.value as 'admin' | 'referente')}
+                            className="text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1 text-zinc-700 dark:text-zinc-300 focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                          >
+                            <option value="referente">Referente</option>
+                            <option value="admin">Administrador</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => handleEliminarUsuario(u.id, u.email || 'este usuario')}
+                            disabled={deletingId === u.id}
+                            title="Revocar acceso y eliminar usuario"
+                            className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            {deletingId === u.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>

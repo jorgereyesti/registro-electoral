@@ -3,7 +3,26 @@ import { createClient } from '@/lib/supabase/server';
 import PersonasTable from '@/components/personas/PersonasTable';
 import { PersonaRecord } from '@/lib/types/personas';
 
-export default async function PersonasPage() {
+export default async function PersonasPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    page?: string;
+    pageSize?: string;
+    q?: string;
+    barrio?: string;
+    circuito?: string;
+    referente?: string;
+  }>;
+}) {
+  const params = await searchParams;
+  const page = Math.max(1, parseInt(params.page || '1', 10));
+  const pageSize = Math.max(1, parseInt(params.pageSize || '10', 10));
+  const q = params.q?.trim() || '';
+  const barrio = params.barrio?.trim() || 'todos';
+  const circuito = params.circuito?.trim() || 'todos';
+  const referente = params.referente?.trim() || 'todos';
+
   const supabase = await createClient();
 
   const {
@@ -18,10 +37,33 @@ export default async function PersonasPage() {
 
   const isAdmin = perfil?.rol === 'admin';
 
-  // Obtener listado de personas (respetando las políticas RLS)
-  const { data: personas, count, error } = await (supabase.from('personas') as any)
-    .select('*', { count: 'exact' })
-    .order('apellido_nombre', { ascending: true });
+  // Total absoluto del padrón en la base de datos
+  const { count: totalCount } = await (supabase.from('personas') as any)
+    .select('*', { count: 'exact', head: true });
+
+  // Consulta paginada y filtrada en servidor
+  let query = (supabase.from('personas') as any)
+    .select('*', { count: 'exact' });
+
+  if (q) {
+    query = query.or(`dni.ilike.%${q}%,apellido_nombre.ilike.%${q}%`);
+  }
+  if (barrio && barrio !== 'todos') {
+    query = query.eq('barrio', barrio);
+  }
+  if (circuito && circuito !== 'todos') {
+    query = query.eq('circuito', circuito);
+  }
+  if (referente && referente !== 'todos') {
+    query = query.eq('created_by', referente);
+  }
+
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data: personas, count: filteredCount, error } = await query
+    .order('apellido_nombre', { ascending: true })
+    .range(from, to);
 
   if (error) {
     console.error('Error cargando personas:', error);
@@ -66,13 +108,20 @@ export default async function PersonasPage() {
         </p>
       </div>
 
-      {/* Tabla con Filtros y Acciones */}
+      {/* Tabla con Filtros y Paginación desde Servidor */}
       <PersonasTable
         initialPersonas={(personasConReferente as PersonaRecord[]) || []}
-        totalCount={count || 0}
+        totalCount={totalCount || 0}
+        filteredCount={filteredCount ?? totalCount ?? 0}
         currentUserId={user?.id || ''}
         isAdmin={isAdmin}
         referentes={referentes}
+        currentPage={page}
+        pageSize={pageSize}
+        initialQ={q}
+        initialBarrio={barrio}
+        initialCircuito={circuito}
+        initialReferente={referente}
       />
     </div>
   );

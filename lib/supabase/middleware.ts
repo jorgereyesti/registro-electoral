@@ -33,7 +33,6 @@ export async function updateSession(request: NextRequest) {
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/data') ||
-    pathname.startsWith('/api/geo') ||
     pathname.startsWith('/favicon.ico') ||
     pathname.includes('.')
   ) {

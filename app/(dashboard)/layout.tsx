@@ -123,9 +123,46 @@ export default async function DashboardLayout({
       </header>
 
       {/* Contenido Principal */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-6">
         {children}
       </main>
+
+      {/* Barra de Navegación Inferior Móvil (Mobile Dock) */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-t border-zinc-200 dark:border-zinc-800 px-3 py-2 flex items-center justify-around shadow-lg">
+        <Link
+          href="/personas"
+          className="flex flex-col items-center gap-1 text-[10px] font-medium text-zinc-600 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+        >
+          <Users className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          <span>Padrón</span>
+        </Link>
+
+        <Link
+          href="/mapa"
+          className="flex flex-col items-center gap-1 text-[10px] font-medium text-zinc-600 dark:text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400"
+        >
+          <Map className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+          <span>Mapa</span>
+        </Link>
+
+        <Link
+          href="/personas/nueva"
+          className="flex flex-col items-center gap-1 text-[10px] font-medium text-zinc-600 dark:text-zinc-400 hover:text-emerald-600 dark:hover:text-emerald-400"
+        >
+          <UserPlus className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+          <span>Registrar</span>
+        </Link>
+
+        {isAdmin && (
+          <Link
+            href="/usuarios"
+            className="flex flex-col items-center gap-1 text-[10px] font-medium text-zinc-600 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+          >
+            <ShieldCheck className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            <span>Usuarios</span>
+          </Link>
+        )}
+      </nav>
     </div>
   );
 }

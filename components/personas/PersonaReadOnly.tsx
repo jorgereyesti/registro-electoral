@@ -38,8 +38,20 @@ interface PersonaReadOnlyProps {
 }
 
 export default function PersonaReadOnly({ persona }: PersonaReadOnlyProps) {
-  const birthDate = new Date(persona.fecha_nacimiento);
-  const age = new Date().getFullYear() - birthDate.getFullYear();
+  const calculateExactAge = (dateStr: string) => {
+    if (!dateStr) return null;
+    const birth = new Date(dateStr + 'T00:00:00');
+    if (isNaN(birth.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  const age = calculateExactAge(persona.fecha_nacimiento);
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
