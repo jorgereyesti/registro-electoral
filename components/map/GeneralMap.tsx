@@ -29,6 +29,8 @@ import {
   UserCheck,
   MapPin,
   ExternalLink,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 
 const ZOOM_THRESHOLD = 15; // Umbral: < 15 etiquetas de circuitos, >= 15 detalle de votantes
@@ -130,7 +132,19 @@ export default function GeneralMap({
   const [baseLayer, setBaseLayer] = useState<BaseLayerType>('osm');
   const [showLayersMenu, setShowLayersMenu] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [showFilterBar, setShowFilterBar] = useState<boolean>(true);
   const [currentZoom, setCurrentZoom] = useState<number>(DEFAULT_ZOOM);
+
+  // Alternar visibilidad de barra de filtros y recalibrar tamaño del mapa
+  const toggleFilterBar = useCallback(() => {
+    setShowFilterBar((prev) => {
+      const next = !prev;
+      setTimeout(() => {
+        mapInstanceRef.current?.invalidateSize();
+      }, 300);
+      return next;
+    });
+  }, []);
 
   // States de Datos y Modal
   const [geoJsonData, setGeoJsonData] = useState<{ barrios: any; circuitos: any } | null>(null);
@@ -808,14 +822,15 @@ export default function GeneralMap({
       ref={mapWrapperRef}
       className={`flex flex-col transition-all duration-300 ${
         isFullscreen
-          ? 'fixed inset-0 z-50 p-4 bg-zinc-100 dark:bg-zinc-950 w-screen h-screen'
+          ? `fixed inset-0 z-50 ${showFilterBar ? 'p-3' : 'p-0'} bg-zinc-100 dark:bg-zinc-950 w-screen h-screen`
           : 'h-full space-y-3'
       }`}
     >
       {/* Panel Superior de Controles y Métricas */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-3 shadow-xs flex flex-wrap items-center justify-between gap-3 transition-colors">
-        {/* Filtros */}
-        <div className="flex flex-wrap items-center gap-2">
+      {showFilterBar && (
+        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-3 shadow-xs flex flex-wrap items-center justify-between gap-3 transition-colors animate-in fade-in slide-in-from-top-2 duration-200">
+          {/* Filtros */}
+          <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
             <Filter className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
             <span>Filtros:</span>
@@ -1056,6 +1071,16 @@ export default function GeneralMap({
             </button>
           </div>
 
+          {/* Botón Ocultar Filtros */}
+          <button
+            onClick={toggleFilterBar}
+            className="p-1.5 px-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 transition-colors cursor-pointer shadow-xs flex items-center gap-1.5 text-xs font-semibold"
+            title="Ocultar barra de filtros para maximizar el área del mapa"
+          >
+            <ChevronUp className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            <span className="hidden sm:inline">Ocultar Filtros</span>
+          </button>
+
           {/* Botón Pantalla Completa */}
           <button
             onClick={toggleFullscreen}
@@ -1079,13 +1104,54 @@ export default function GeneralMap({
           </button>
         </div>
       </div>
+      )}
 
       {/* Contenedor del Mapa y Tarjeta Flotante */}
-      <div className="flex-1 relative rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-sm min-h-[500px]">
+      <div className={`flex-1 relative overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-sm min-h-[500px] transition-all duration-300 ${
+        isFullscreen && !showFilterBar ? 'rounded-none border-0' : 'rounded-2xl'
+      }`}>
         <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-        {/* Botón flotante directo para Pantalla Completa sobre el mapa */}
-        <div className="absolute top-4 right-14 z-20">
+        {/* HUD Flotante cuando los filtros están ocultos (Mostrar Filtros + Contador de Votantes) */}
+        {!showFilterBar && (
+          <div className="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
+            <button
+              onClick={toggleFilterBar}
+              className="px-3 py-2 rounded-xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 shadow-md text-xs font-bold flex items-center gap-2 transition-all cursor-pointer hover:scale-105 active:scale-95 group"
+              title="Mostrar barra de filtros y controles"
+            >
+              <Filter className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 group-hover:rotate-12 transition-transform" />
+              <span>Mostrar Filtros</span>
+              {(selectedBarrio !== 'todos' || selectedCircuito !== 'todos' || selectedReferente !== 'todos') && (
+                <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse" title="Filtros activos" />
+              )}
+            </button>
+
+            {/* Pastilla directa de Padrón Flotante */}
+            <button
+              onClick={() => setShowVotantesModal(true)}
+              className="px-3 py-2 rounded-xl bg-indigo-600/95 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-md text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95"
+              title="Abrir Padrón Flotante"
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>{filteredPersonas.length} Votantes</span>
+            </button>
+          </div>
+        )}
+
+        {/* Botones flotantes en la esquina superior derecha sobre el mapa */}
+        <div className="absolute top-4 right-14 z-20 flex items-center gap-2">
+          {showFilterBar && (
+            <button
+              onClick={toggleFilterBar}
+              className="p-2 rounded-xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 shadow-md transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
+              title="Ocultar barra de filtros para maximizar vista"
+            >
+              <ChevronUp className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span className="hidden md:inline">Ocultar Filtros</span>
+            </button>
+          )}
+
           <button
             onClick={toggleFullscreen}
             className="p-2 rounded-xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 shadow-md transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
