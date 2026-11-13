@@ -69,7 +69,7 @@ export default async function MapaGeneralPage({
             Mapa General de San Miguel de Tucumán
           </h1>
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            Visualización geoespacial con marcadores en acento <span className="font-semibold text-rose-600 dark:text-rose-400">rose-600</span>, agrupamiento dinámico (clusters) y delimitación de 354 Barrios y 47 Circuitos Electorales.
+            Visualización geoespacial con marcadores y delimitación de 354 Barrios y 47 Circuitos Electorales.
           </p>
         </div>
       </div>
